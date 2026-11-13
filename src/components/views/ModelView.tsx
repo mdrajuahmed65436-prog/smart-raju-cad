@@ -1,11 +1,11 @@
 import { useRef, useState } from 'react';
 import { Canvas } from '@react-three/fiber';
-import { Box, Download, Loader2 } from 'lucide-react';
-import type { Group } from 'three';
+import { Box, Download, Image as ImageIcon, Loader2 } from 'lucide-react';
+import type { Group, WebGLRenderer } from 'three';
 import type { FloorPlan } from '@/lib/floorPlan';
 import type { Fixtures } from '@/lib/fixtures';
 import type { SolarResult } from '@/lib/solar';
-import { exportGlb, exportStl } from '@/lib/exporters';
+import { exportCanvasPng, exportGlb, exportStl } from '@/lib/exporters';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '@/lib/uiClasses';
 import type { PlanConfig, RoofView } from '@/types/plan';
 import ModelScene from '@/components/three/ModelScene';
@@ -17,6 +17,8 @@ interface ModelViewProps {
   fixtures: Fixtures;
 }
 
+type ExportKind = 'png' | 'glb' | 'stl';
+
 const ROOF_VIEWS: { value: RoofView; label: string }[] = [
   { value: 'solid', label: 'Solid roof' },
   { value: 'transparent', label: 'Transparent' },
@@ -25,18 +27,27 @@ const ROOF_VIEWS: { value: RoofView; label: string }[] = [
 
 export default function ModelView({ plan, config, solar, fixtures }: ModelViewProps) {
   const buildingRef = useRef<Group>(null);
+  const rendererRef = useRef<WebGLRenderer | null>(null);
   const [roofView, setRoofView] = useState<RoofView>('solid');
-  const [busy, setBusy] = useState<'glb' | 'stl' | null>(null);
+  const [busy, setBusy] = useState<ExportKind | null>(null);
   const [error, setError] = useState<string | null>(null);
   const span = Math.max(plan.length, plan.width);
 
-  const runExport = async (kind: 'glb' | 'stl') => {
-    if (!buildingRef.current) return;
+  const runExport = async (kind: ExportKind) => {
     setBusy(kind);
     setError(null);
     try {
-      if (kind === 'glb') await exportGlb(buildingRef.current, 'smart-raju-cad-model.glb');
-      else exportStl(buildingRef.current, 'smart-raju-cad-model.stl');
+      if (kind === 'png') {
+        const canvas = rendererRef.current?.domElement;
+        if (!canvas) throw new Error('The 3D view is not ready yet. Please try again.');
+        await exportCanvasPng(canvas, 'smart-raju-3d-model.png');
+      } else if (kind === 'glb') {
+        if (!buildingRef.current) throw new Error('The 3D model is not ready yet. Please try again.');
+        await exportGlb(buildingRef.current, 'smart-raju-3d-model.glb');
+      } else {
+        if (!buildingRef.current) throw new Error('The 3D model is not ready yet. Please try again.');
+        exportStl(buildingRef.current, 'smart-raju-3d-model.stl');
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The 3D model could not be exported.');
     } finally {
@@ -56,9 +67,13 @@ export default function ModelView({ plan, config, solar, fixtures }: ModelViewPr
             {busy === 'stl' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Box className="h-4 w-4" />}
             Export STL
           </button>
-          <button type="button" className={BUTTON_PRIMARY} onClick={() => runExport('glb')} disabled={busy !== null}>
+          <button type="button" className={BUTTON_SECONDARY} onClick={() => runExport('glb')} disabled={busy !== null}>
             {busy === 'glb' ? <Loader2 className="h-4 w-4 animate-spin" /> : <Download className="h-4 w-4" />}
             Export GLB
+          </button>
+          <button type="button" className={BUTTON_PRIMARY} onClick={() => runExport('png')} disabled={busy !== null}>
+            {busy === 'png' ? <Loader2 className="h-4 w-4 animate-spin" /> : <ImageIcon className="h-4 w-4" />}
+            Export PNG
           </button>
         </div>
       </div>
@@ -84,7 +99,14 @@ export default function ModelView({ plan, config, solar, fixtures }: ModelViewPr
       {error && <p className="rounded-lg bg-rose-50 p-3 text-sm text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">{error}</p>}
 
       <div className="h-[420px] overflow-hidden rounded-2xl border border-slate-200 bg-gradient-to-b from-slate-100 to-slate-200 shadow-lg dark:border-slate-800 dark:from-slate-900 dark:to-slate-950 sm:h-[560px]">
-        <Canvas dpr={[1, 2]} camera={{ position: [span * 0.9, span * 0.7, span * 0.9], fov: 45, near: 0.1, far: span * 20 }}>
+        <Canvas
+          dpr={[1, 2]}
+          gl={{ preserveDrawingBuffer: true, antialias: true }}
+          onCreated={({ gl }) => {
+            rendererRef.current = gl;
+          }}
+          camera={{ position: [span * 0.9, span * 0.7, span * 0.9], fov: 45, near: 0.1, far: span * 20 }}
+        >
           <ModelScene
             plan={plan}
             roofType={config.roofType}

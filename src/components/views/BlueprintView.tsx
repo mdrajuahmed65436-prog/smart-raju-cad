@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Download, FileImage, Loader2 } from 'lucide-react';
 import type { FloorPlan } from '@/lib/floorPlan';
-import { downloadBlueprintPdf, downloadPng, svgToPng } from '@/lib/exporters';
+import { exportBlueprintPdf, exportBlueprintPng } from '@/lib/exporters';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '@/lib/uiClasses';
 import BlueprintSvg from '@/components/views/BlueprintSvg';
 
@@ -19,9 +19,8 @@ export default function BlueprintView({ plan }: BlueprintViewProps) {
     setBusy(kind);
     setError(null);
     try {
-      const image = await svgToPng(svgRef.current);
-      if (kind === 'png') downloadPng(image, 'smart-raju-cad-blueprint.png');
-      else downloadBlueprintPdf(image, 'smart-raju-cad-blueprint.pdf');
+      if (kind === 'png') await exportBlueprintPng(svgRef.current, 'smart-raju-2d-blueprint.png');
+      else await exportBlueprintPdf(svgRef.current, 'smart-raju-2d-blueprint.pdf');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'The blueprint could not be exported.');
     } finally {
